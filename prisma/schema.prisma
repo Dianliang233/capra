@@ -10,18 +10,19 @@ generator client {
   provider = "prisma-client-js"
 }
 
+/// Information about OAuth accounts associated with a User. Users can have multiple "accounts".
 model Account {
   id                String  @id @default(cuid())
   userId            String
   type              String
   provider          String
   providerAccountId String
-  refresh_token     String? @db.Text
-  access_token      String? @db.Text
+  refresh_token     String?
+  access_token      String?
   expires_at        Int?
   token_type        String?
   scope             String?
-  id_token          String? @db.Text
+  id_token          String?
   session_state     String?
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -30,21 +31,12 @@ model Account {
 }
 
 model Session {
-  id           String   @id @default(cuid())
-  sessionToken String   @unique
+  id           String     @id @default(cuid())
+  sessionToken String     @unique
   userId       String
   expires      DateTime
-  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-}
-
-model User {
-  id            String    @id @default(cuid())
-  name          String?
-  email         String?   @unique
-  emailVerified DateTime?
-  image         String?
-  accounts      Account[]
-  sessions      Session[]
+  user         User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  IPRecord     IPRecord[]
 }
 
 model VerificationToken {
@@ -53,4 +45,120 @@ model VerificationToken {
   expires    DateTime
 
   @@unique([identifier, token])
+}
+
+model User {
+  id            String      @id @default(cuid())
+  displayId     Int         @unique @default(autoincrement())
+  name          String?
+  slug          String?     @unique
+  deleted       Boolean     @default(false)
+  email         String?     @unique
+  emailVerified DateTime?
+  phone         String?     @unique
+  description   String?
+  image         String?
+  usergroups    Usergroup[]
+  createdAt     DateTime    @default(now())
+  lastActive    DateTime    @default(now())
+  IPRecord      IPRecord[] /// Please truncate this to ~10 items or it will blow up the database.
+
+  accounts Account[]
+  sessions Session[]
+  Posts    Post[]
+  Votes    VotesByUser[]
+}
+
+model IPRecord {
+  time      DateTime @id @default(now())
+  sessionId String
+  Session   Session  @relation(fields: [sessionId], references: [id], onDelete: Restrict)
+  ip        String
+  User      User     @relation(fields: [userId], references: [id])
+  userId    String
+}
+
+model Usergroup {
+  id          String   @id @default(cuid())
+  name        String   @unique
+  permissions String[]
+  Users       User[]
+}
+
+enum Vote {
+  Love /// +2
+  Like /// +1
+  Dislike /// -1
+}
+
+model VotesByUser {
+  id     String  @id @default(cuid())
+  userId String
+  vote   Vote
+  postId String?
+
+  User User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  Post Post? @relation(fields: [postId], references: [id], onDelete: Cascade)
+}
+
+enum PageStatus {
+  Visible_Published
+  LoginRequired_Restricted
+  Hidden_Draft
+  Hidden_InReview
+  Hidden_Spam
+  Hidden_ReviewFailed
+}
+
+enum TagType {
+  Discussion
+  LibraryResource
+}
+
+model Tag {
+  id           String   @id @default(cuid())
+  displayId    Int      @unique @default(autoincrement())
+  name         String   @unique
+  summary      String?
+  type         TagType  @default(Discussion)
+  hidden       Boolean  @default(false)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @default(now())
+  Posts        Post[]
+  pinnedPostId String
+  PinnedPost   Post     @relation("PinnedInTag", fields: [pinnedPostId], references: [id], onDelete: Cascade)
+}
+
+enum PostType {
+  Microblog
+  Blog
+  QA
+  Library
+  Comment
+}
+
+model Post {
+  id              String     @id @default(cuid())
+  displayId       Int        @unique @default(autoincrement())
+  type            PostType
+  slug            String?    @unique /// BLOG, LIBRARY
+  userId          String
+  content         String
+  icon            String?
+  summary         String? /// BLOG, LIBRARY
+  votesCache      Int        @default(0)
+  status          PageStatus
+  createdAt       DateTime   @default(now())
+  updatedAt       DateTime   @default(now())
+  pinnedInProfile Boolean    @default(false) /// BLOG, QA, LIBRARY, MICROBLOG
+  pinnedInHome    Boolean    @default(false) /// BLOG, QA, LIBRARY, MICROBLOG
+  pinnedInTagsId  String[] /// BLOG, QA, LIBRARY, MICROBLOG
+  parentPostId    String?
+
+  ParentPost   Post?         @relation("ParentChildPost", fields: [parentPostId], references: [id], onDelete: Cascade)
+  User         User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  Tags         Tag[] /// BLOG, QA, LIBRARY, MICROBLOG
+  ChildPosts   Post[]        @relation("ParentChildPost")
+  VotesByUser  VotesByUser[]
+  PinnedInTags Tag[]         @relation("PinnedInTag")
 }
